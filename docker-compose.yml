@@ -1,0 +1,52 @@
+version: "3"
+
+services:
+  web:
+    image: docker.io/kittysh/firefish:latest
+    restart: unless-stopped
+    env_file: docker.env 
+    depends_on:
+      - db
+      - redis
+      - sonic
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - calcnet
+    volumes:
+      - files:/firefish/files
+
+  redis:
+    restart: unless-stopped
+    image: docker.io/redis:7.0-alpine
+    networks:
+      - calcnet
+    volumes:
+      - redis:/data
+
+  db:
+    restart: unless-stopped
+    image: docker.io/postgres:15.3-alpine
+    env_file: docker.env
+    networks:
+      - calcnet
+    volumes:
+      - db:/var/lib/postgresql/data
+
+  sonic:
+    restart: unless-stopped
+    image: docker.io/kittysh/sonic:v1.4.0
+    env_file: docker.env
+    networks:
+      - calcnet
+    volumes:
+      - sonic:/var/lib/sonic/store
+
+networks:
+  calcnet:
+
+volumes:
+  files:
+  sonic:
+  db:
+  redis:

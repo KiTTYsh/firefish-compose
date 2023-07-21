@@ -1,0 +1,103 @@
+#!/bin/ash
+
+# Define config file URL
+X_CONFIG_FILE=/firefish/.config/default.yml
+
+# Define default Node ENV if unset
+export NODE_ENV="${NODE_ENV:=production}"
+
+# Define additional node CA's if database certificate exists at specified location
+[ -e "/firefish/.config/postgres.crt" ] && export NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS:=/firefish/.config/postgres.crt}"
+
+[ -d "/firefish/.config" ] && [ ! -e "${X_CONFIG_FILE}" ] && echo "WARNING: .config exists but no default.yml, we will try to generate one from env vars!"
+[ ! -d "/firefish/.config" ] && mkdir -p "/firefish/.config"
+
+# Assemble configuration file from environment variables if it does not exist
+if [ ! -e "${X_CONFIG_FILE}" ]; then
+
+  # Define error function for compact oneliners
+  function error() { echo "ERROR: $@"; exit 1; }
+
+  # Check needed variables
+  [ -z ${FIREFISH_URL+x} ] && error "FIREFISH_URL is not defined."
+  [ -z ${POSTGRES_HOST+x} ] && error "POSTGRES_HOST is not defined."
+  [ -z ${POSTGRES_DB+x} ] && error "POSTGRES_DB is not defined."
+  [ -z ${POSTGRES_USER+x} ] && error "POSTGRES_USER is not defined."
+  [ -z ${POSTGRES_PASSWORD+x} ] && error "POSTGRES_PASSWORD is not defined."
+  [ -z ${REDIS_HOST+x} ] && error "REDIS_HOST is not defined."
+  [ -z ${SONIC_HOST+x} ] && [ -z ${MEILISEARCH_HOST+x} ] && error "Neither SONIC_HOST or MEILISEARCH_HOST are defined."
+  [ ! -z ${SONIC_HOST+x} ] && [ ! -z ${MEILISEARCH_HOST+x} ] && error "Both SONIC_HOST and MEILISEARCH_HOST are defined, but only one may be set."
+  [ ! -z ${SONIC_HOST+x} ] && [ -z ${SONIC_PASSWORD+x} ] && error "SONIC_PASSWORD is not defined."
+
+  # Start assembling config
+  echo "url: ${FIREFISH_URL}" > ${X_CONFIG_FILE}
+  echo "port: ${FIREFISH_PORT:=3000}" >> ${X_CONFIG_FILE}
+  echo "db:" >> ${X_CONFIG_FILE}
+  echo "  host: ${POSTGRES_HOST}" >> ${X_CONFIG_FILE}
+  echo "  port: ${POSTGRES_PORT:=5432}" >> ${X_CONFIG_FILE}
+  # Set DB SSL if CA certificate given or if POSTGRES_SSL set
+  [ -e "/firefish/.config/postgres.crt" ] || [ ! -z ${POSTGRES_SSL+x} ] && echo "  ssl: ${POSTGRES_SSL:=true}" >> ${X_CONFIG_FILE}
+  echo "  db: ${POSTGRES_DB}" >> ${X_CONFIG_FILE}
+  echo "  user: ${POSTGRES_USER}" >> ${X_CONFIG_FILE}
+  echo "  pass: ${POSTGRES_PASSWORD}" >> ${X_CONFIG_FILE}
+  [ ! -z ${FIREFISH_DB_DISABLE_CACHE+x} ] && echo "  disableCache: ${FIREFISH_DB_DISABLE_CACHE}" >> ${X_CONFIG_FILE}
+  if [ ! -z ${FIREFISH_DB_SSL_HOST+x} ] || [ ! -z ${FIREFISH_DB_REJECT_UNAUTHORIZED+x} ]; then
+    echo "  extra:" >> ${X_CONFIG_FILE}
+    echo "    ssl:" >> ${X_CONFIG_FILE}
+    [ ! -z ${FIREFISH_DB_SSL_HOST+x} ] && echo "      host: ${FIREFISH_DB_SSL_HOST}" >> ${X_CONFIG_FILE}
+    [ ! -z ${FIREFISH_DB_REJECT_UNAUTHORIZED+x} ] && echo "      rejectUnauthorized: ${FIREFISH_DB_REJECT_UNAUTHORIZED}" >> ${X_CONFIG_FILE}
+  fi
+  echo "redis:" >> ${X_CONFIG_FILE}
+  echo "  host: ${REDIS_HOST}" >> ${X_CONFIG_FILE}
+  echo "  port: ${REDIS_PORT:=6379}" >> ${X_CONFIG_FILE}
+  if [ ! -z ${FIREFISH_REDIS_TLS_HOST+x} ] || [ ! -z ${FIREFISH_REDIS_TLS_REJECT_UNAUTHORIZED} ]; then
+    echo "  tls:" >> ${X_CONFIG_FILE}
+    [ ! -z ${FIREFISH_REDIS_TLS_HOST+x} ] && echo "    host: ${FIREFISH_REDIS_TLS_HOST}" >> ${X_CONFIG_FILE}
+    [ ! -z ${FIREFISH_REDIS_TLS_REJECT_UNAUTHORIZED+x} ] && echo "    rejectUnauthorized: ${FIREFISH_REDIS_TLS_REJECT_UNAUTHORIZED}" >> ${X_CONFIG_FILE}
+  fi
+  [ ! -z ${REDIS_IPFAMILY+x} ] && echo "  family: ${REDIS_IPFAMILY}" >> ${X_CONFIG_FILE}
+  [ ! -z ${REDIS_PASSWORD+x} ] && echo "  pass: ${REDIS_PASSWORD}" >> ${X_CONFIG_FILE}
+  [ ! -z ${REDIS_PREFIX+x} ] && echo "  prefix: ${REDIS_PREFIX}" >> ${X_CONFIG_FILE}
+  [ ! -z ${REDIS_DB+x} ] && echo "  db: ${REDIS_DB}" >> ${X_CONFIG_FILE}
+  [ ! -z ${REDIS_USER+x} ] && echo "  user: ${REDIS_USER}" >> ${X_CONFIG_FILE}
+  # Only include Cache server configuration if host specified
+  if [ ! -z ${CACHE_HOST+x} ]; then
+    echo "cacheServer:" >> ${X_CONFIG_FILE}
+    echo "  host: ${CACHE_HOST}" >> ${X_CONFIG_FILE}
+    echo "  port: ${CACHE_PORT:=6379}" >> ${X_CONFIG_FILE}
+    [ ! -z ${CACHE_IPFAMILY+x} ] && echo "  family: ${CACHE_IPFAMILY}" >> ${X_CONFIG_FILE}
+    [ ! -z ${CACHE_PASSWORD+x} ] && echo "  pass: ${CACHE_PASSWORD}" >> ${X_CONFIG_FILE}
+    [ ! -z ${CACHE_PREFIX+x} ] && echo "  prefix: ${CACHE_PREFIX}" >> ${X_CONFIG_FILE}
+    [ ! -z ${CACHE_DB+x} ] && echo "  db: ${CACHE_DB}" >> ${X_CONFIG_FILE}
+  fi
+  if [ ! -z ${MEILISEARCH_HOST+x} ]; then
+    echo "meilisearch:" >> ${X_CONFIG_FILE}
+    echo "  host: ${MEILISEARCH_HOST}" >> ${X_CONFIG_FILE}
+    echo "  port: ${MEILISEARCH_PORT:=7700}" >> ${X_CONFIG_FILE}
+    echo "  ssl: ${MEILISEARCH_SSL:=false}" >> ${X_CONFIG_FILE}
+    echo "  apiKey: ${MEILISEARCH_APIKEY}" >> ${X_CONFIG_FILE}
+  fi
+  if [ ! -z ${SONIC_HOST+x} ]; then
+    echo "sonic:" >> ${X_CONFIG_FILE}
+    echo "  host: ${SONIC_HOST}" >> ${X_CONFIG_FILE}
+    echo "  port: ${SONIC_PORT:=1491}" >> ${X_CONFIG_FILE}
+    echo "  auth: ${SONIC_PASSWORD}" >> ${X_CONFIG_FILE}
+    echo "  collection: ${SONIC_COLLECTION:=notes}" >> ${X_CONFIG_FILE}
+    echo "  bucket: ${SONIC_BUCKET:=default}" >> ${X_CONFIG_FILE}
+  fi
+  FIREFISH_RESERVED_USERNAMES="${FIREFISH_RESERVED_USERNAMES:=root,admin,administrator,me,system}"
+  if [ ! "${FIREFISH_RESERVED_USERNAMES}" == "false" ]; then
+    echo "reservedUsernames: [" >> ${X_CONFIG_FILE}
+    amount="$(echo ${FIREFISH_RESERVED_USERNAMES//,/ } | wc -w)"
+    i=0
+    for x in ${FIREFISH_RESERVED_USERNAMES//,/ }; do
+      i=$(($i+1))
+      [ "$i" == "$amount" ] && endchar="" || endchar=","
+      echo "  '${x}'${endchar}" >> ${X_CONFIG_FILE}
+    done
+    echo "]" >> ${X_CONFIG_FILE}
+  fi
+
+fi # End config file generation
+
+exec /usr/bin/pnpm run migrateandstart
